@@ -1,0 +1,4 @@
+# Pleos SDK는 리플렉션과 Proxy로 호출하므로 이름이 바뀌면 안 된다.
+-keep class ai.pleos.** { *; }
+-keep interface ai.pleos.** { *; }
+-dontwarn ai.pleos.**
