@@ -25,7 +25,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## APK
 
-- 위치: [`apk/엄하준_챙겼니_release.apk`](apk/엄하준_챙겼니_release.apk) (release 빌드, 설치용 디버그 키로 서명)
+- 위치: [`apk/엄하준_챙겼니_release.apk`](apk/엄하준_챙겼니_release.apk) (release 빌드, 자체 생성 릴리스 키로 서명)
 - 설치: `adb install -r apk/엄하준_챙겼니_release.apk`
 - OpenAI 키 없이 빌드한 파일이라 오프라인 모드로 동작. 상단 칩에 "온라인 키 없음"으로 표시됨
 - 테스트 환경: Pleos 에뮬레이터 Connect v2.1.0 (API 34)

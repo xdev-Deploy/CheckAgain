@@ -35,10 +35,23 @@ android {
         buildConfig = true
     }
 
+    // 릴리스 키 정보는 local.properties에서 읽는다. 없으면 디버그 키로 서명한다.
+    signingConfigs {
+        create("release") {
+            val path = localProps.getProperty("RELEASE_STORE_FILE", "").trim()
+            if (path.isNotEmpty() && file(path).exists()) {
+                storeFile = file(path)
+                storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
+                keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
+                keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // 제출용 APK를 바로 설치할 수 있도록 디버그 키로 서명한다. 스토어 배포용 키가 아니다.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
