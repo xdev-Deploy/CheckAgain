@@ -15,7 +15,8 @@ class VehicleMonitor(
     context: Context,
     private val log: (String) -> Unit,
     private val onDoor: (DoorValue, Boolean) -> Unit,
-    private val onSeat: (String, Boolean) -> Unit
+    private val onSeat: (String, Boolean) -> Unit,
+    private val onSeatInitial: (String) -> Unit = {}
 ) {
 
     private class Signal(
@@ -29,7 +30,7 @@ class VehicleMonitor(
 
     private val app = context.applicationContext
     private val handler = Handler(Looper.getMainLooper())
-    private val doorAreas = DoorValue.entries.filter { it.name.startsWith("ROW_") }
+    private val doorAreas = DoorValue.entries.filter { it.name.startsWith("ROW_") || it == DoorValue.REAR || it == DoorValue.HOOD }
     private val doorListeners = mutableMapOf<DoorValue, DoorPositionListener>()
     private val doorState = mutableMapOf<DoorValue, Boolean>()
     private val doorUnsupported = mutableSetOf<DoorValue>()
@@ -39,6 +40,7 @@ class VehicleMonitor(
     private val seatRaw = mutableMapOf<String, Boolean>()
     private val seatTimers = mutableMapOf<String, Runnable>()
     private val seatForced = mutableMapOf<String, Boolean>()
+    private val seatChanged = mutableSetOf<String>()
     private val doorForced = mutableMapOf<DoorValue, Boolean>()
 
     private var vehicle: Vehicle? = null
@@ -73,6 +75,7 @@ class VehicleMonitor(
     fun injectRolling(on: Boolean) {
         rollForced = on
         log("주행 모사 ${if (on) "켬" else "끔"}")
+        recompute()
     }
 
     fun hasDriveSignal(): Boolean = gearClass != null || brakePressed != null || odoLast.isNotEmpty()
@@ -83,6 +86,10 @@ class VehicleMonitor(
     fun seatSettling(): Boolean = seatRaw.any { (name, raw) -> seatState[name] != raw }
 
     fun seats(): Map<String, Boolean> = seatState.toMap()
+
+    // 화면용 좌석 상태. 시작 시 점유된 자리도 센서 값 그대로 앉은 자리로 보여 준다(seatChanged에 등록됨).
+    fun seatsForDisplay(): Map<String, Boolean> =
+        seatState.mapValues { (name, occupied) -> occupied && (name == DRIVER || name in seatChanged) }
 
     fun anyDoorOpen(): Boolean = doorState.values.any { it }
 
@@ -124,6 +131,7 @@ class VehicleMonitor(
         seatRaw.clear()
         seatTimers.clear()
         seatForced.clear()
+        seatChanged.clear()
         doorForced.clear()
         log("VehicleMonitor 종료")
     }
@@ -381,8 +389,15 @@ class VehicleMonitor(
         }
     }
 
+    private val doorRaw = mutableMapOf<DoorValue, Int?>()
+
     private fun updateDoor(area: DoorValue, pos: Int?, source: String) {
-        if (source != "주입" && doorForced.containsKey(area)) return
+        if (source != "주입" && doorForced.containsKey(area) ) return
+        // 콘솔의 문 조작과 차량 그림의 문 버튼이 서로 다른 값을 보내는지 확인할 수 있게 원본 값이 바뀔 때 남긴다.
+        if (!doorRaw.containsKey(area) || doorRaw[area] != pos) {
+            doorRaw[area] = pos
+            log("Door 원본값 ${area.name}=$pos ($source)")
+        }
         val open = (pos ?: 0) > 0
         val before = doorState.put(area, open)
         if (before == null || before == open) return
@@ -399,6 +414,12 @@ class VehicleMonitor(
         if (seatState[name] == null) {
             seatState[name] = occupied
             seatRaw[name] = occupied
+            log("좌석 초기값 $name ${if (occupied) "점유" else "비움"}")
+            // 시작할 때 이미 앉아 있는 동승자 좌석은 센서 값 그대로 탑승으로 보고 등록을 묻는다.
+            if (occupied && name != DRIVER) {
+                seatChanged.add(name)
+                onSeatInitial(name)
+            }
             return
         }
         if (seatRaw[name] == occupied) return
@@ -409,6 +430,7 @@ class VehicleMonitor(
             seatTimers.remove(name)
             if (seatRaw[name] == occupied && seatState[name] != occupied) {
                 seatState[name] = occupied
+                seatChanged.add(name)
                 onSeat(name, occupied)
             }
         }
@@ -464,7 +486,7 @@ class VehicleMonitor(
         val now = SystemClock.elapsedRealtime()
         val odoMoving = lastOdoIncrease != 0L && now - lastOdoIncrease < ODO_WINDOW_MS
         val inGear = gearClass == 'D' || gearClass == 'R'
-        val next = odoMoving || (inGear && brakePressed != true)
+        val next = rollForced || odoMoving || (inGear && brakePressed != true)
         if (next && !moving) {
             lastTripAt = System.currentTimeMillis()
             log("주행 시작 감지")
@@ -527,5 +549,6 @@ class VehicleMonitor(
         const val RETRY_MAX_MS = 15000L
         const val ODO_WINDOW_MS = 2500L
         const val SEAT_STABLE_MS = 1000L
+        const val DRIVER = "ROW_1_LEFT"
     }
 }

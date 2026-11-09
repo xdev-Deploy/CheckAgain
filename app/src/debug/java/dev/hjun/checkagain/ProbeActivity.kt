@@ -27,8 +27,8 @@ import java.util.Locale
 class ProbeActivity : Activity() {
 
     private val tag = "PleosProbe"
-    private val clientId = ""
-    private val clientSecret = ""
+    private val clientId = "PwLKwY2kSaWdjBNfO0j9CQ"
+    private val clientSecret = "be441b6b-7157-4ac1-b50f-da760cd20fb2"
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var logView: TextView
     private lateinit var scroll: ScrollView
@@ -38,9 +38,11 @@ class ProbeActivity : Activity() {
     private var stt: SpeechToText? = null
     private val doorListeners = mutableMapOf<DoorValue, DoorPositionListener>()
     private var lastRmsLog = 0L
+    private val logSink: (String) -> Unit = { appendUi(it) }
 
     private val actions: List<Pair<String, () -> Unit>> = listOf(
-        "0 SDK 구조 덤프" to ::dumpApi,
+        "0 목록 초기화" to ::clearList,
+        "SDK 구조 덤프" to ::dumpApi,
         "1 Vehicle 초기화" to ::vehicleInit,
         "2 Door 능력 확인" to ::doorCapabilities,
         "3 Door 전체 읽기" to ::doorReadAll,
@@ -75,6 +77,8 @@ class ProbeActivity : Activity() {
         "32 2열우 문 닫힘" to { injectDoor("ROW_2_RIGHT", false) },
         "33 2열좌 문 열림" to { injectDoor("ROW_2_LEFT", true) },
         "34 2열좌 문 닫힘" to { injectDoor("ROW_2_LEFT", false) },
+        "35 트렁크 열림" to { injectDoor("REAR", true) },
+        "36 트렁크 닫힘" to { injectDoor("REAR", false) },
         "로그 지우기" to { logView.text = "" }
     )
 
@@ -113,11 +117,12 @@ class ProbeActivity : Activity() {
     override fun onStart() {
         super.onStart()
         if (logView.text.isEmpty()) AutoService.replay().takeLast(80).forEach { appendUi(it) }
-        AutoService.sink = ::appendUi
+        AutoService.sink = logSink
     }
 
     override fun onStop() {
-        AutoService.sink = null
+        // 화면 전환 중에는 새 화면의 onStart로 등록한 뒤 이전 화면의 onStop이 오므로, 내가 등록한 것일 때만 해제한다.
+        if (AutoService.sink === logSink) AutoService.sink = null
         super.onStop()
     }
 
@@ -422,6 +427,17 @@ class ProbeActivity : Activity() {
         }
         seatSubscriptions.clear()
         log("Seat 구독 해제 완료")
+    }
+
+    // 감시를 멈추지 않고 등록된 사람과 짐만 비운다.
+    private fun clearList() = safe("목록 초기화") {
+        val flow = AutoService.current
+        if (flow != null) {
+            flow.clearRegistrations()
+        } else {
+            PassengerStore(applicationContext).clear()
+            log("등록 목록 초기화")
+        }
     }
 
     private fun autoStart() = safe("자동 모드 시작") {

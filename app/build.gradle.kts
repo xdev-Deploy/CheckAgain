@@ -1,6 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
 }
+
+// API 키는 저장소에 올라가지 않는 local.properties에서 읽어 BuildConfig로 앱에 넣는다.
+val localProps = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun localProp(name: String, default: String = ""): String =
+    localProps.getProperty(name, default).trim().replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "dev.hjun.checkagain"
@@ -16,6 +26,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "OPENAI_API_KEY", "\"${localProp("OPENAI_API_KEY")}\"")
+        buildConfigField("String", "OPENAI_MODEL", "\"${localProp("OPENAI_MODEL", "gpt-4o-mini")}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

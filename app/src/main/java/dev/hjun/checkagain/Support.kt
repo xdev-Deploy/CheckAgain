@@ -9,10 +9,12 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.reflect.Proxy
+import java.util.UUID
 
 private const val TAG = "CheckAgain"
 
 data class Person(
+    val id: String,
     val name: String,
     val items: List<String>,
     val seat: String? = null,
@@ -32,6 +34,7 @@ class PassengerStore(context: Context) {
             result.add(
                 Person(
                     key,
+                    value.optString("name").ifEmpty { key },
                     readList(value.optJSONArray("items") ?: JSONArray()),
                     value.optString("seat").ifEmpty { null },
                     value.optBoolean("viaDoor", false),
@@ -39,33 +42,39 @@ class PassengerStore(context: Context) {
                 )
             )
         }
-        return result
+        return result.sortedBy { it.registeredAt }
     }
 
-    fun put(name: String, items: List<String>, seat: String? = null, viaDoor: Boolean = false) {
-        val current = people().filter { it.name != name }.toMutableList()
-        current.add(Person(name, items, seat, viaDoor, System.currentTimeMillis()))
+    // id가 있으면 그 항목을 덮어쓰고, 없으면 새 항목을 만든다. 저장된 id를 돌려준다.
+    fun put(id: String?, name: String, items: List<String>, seat: String? = null, viaDoor: Boolean = false): String {
+        val key = id ?: UUID.randomUUID().toString().take(8)
+        val current = people().filter { it.id != key }.toMutableList()
+        current.add(Person(key, name, items, seat, viaDoor, System.currentTimeMillis()))
         save(current)
+        return key
     }
 
-    fun remove(name: String) = save(people().filter { it.name != name })
+    fun remove(id: String) = save(people().filter { it.id != id })
 
-    fun purge(shouldDrop: (Person) -> Boolean): List<String> {
+    fun purge(shouldDrop: (Person) -> Boolean): List<Person> {
         val all = people()
-        val dropped = all.filter(shouldDrop).map { it.name }
-        if (dropped.isNotEmpty()) save(all.filter { it.name !in dropped })
+        val dropped = all.filter(shouldDrop)
+        if (dropped.isNotEmpty()) save(all.filter { p -> dropped.none { it.id == p.id } })
         return dropped
     }
 
-    // 같은 이름이거나 한쪽이 다른 쪽을 포함할 때만 같은 사람으로 본다. 글자 하나 차이는 다른 사람으로 둔다.
-    fun match(name: String): String? {
-        val names = people().map { it.name }
-        names.firstOrNull { it == name }?.let { return it }
-        return names.firstOrNull { minOf(it.length, name.length) >= 2 && (it.contains(name) || name.contains(it)) }
+    // 같은 이름이거나 한쪽이 다른 쪽을 포함하는 등록자를 찾는다. 글자 하나 차이는 다른 사람으로 둔다.
+    // skip이 true인 등록자는 후보에서 뺀다. 같은 이름이어도 아직 자리에 앉아 있는 사람은 동명이인이다.
+    fun findSame(name: String, skip: (Person) -> Boolean): Person? {
+        val candidates = people().filterNot(skip)
+        return candidates.firstOrNull { it.name == name }
+            ?: candidates.firstOrNull {
+                minOf(it.name.length, name.length) >= 2 && (it.name.contains(name) || name.contains(it.name))
+            }
     }
 
-    fun bind(name: String, seat: String?, viaDoor: Boolean) {
-        save(people().map { if (it.name == name) it.copy(seat = seat, viaDoor = viaDoor) else it })
+    fun bind(id: String, seat: String?, viaDoor: Boolean) {
+        save(people().map { if (it.id == id) it.copy(seat = seat, viaDoor = viaDoor) else it })
     }
 
     fun clear() = save(emptyList())
@@ -76,8 +85,9 @@ class PassengerStore(context: Context) {
         val json = JSONObject()
         list.forEach { person ->
             json.put(
-                person.name,
+                person.id,
                 JSONObject()
+                    .put("name", person.name)
                     .put("items", JSONArray(person.items))
                     .put("seat", person.seat ?: "")
                     .put("viaDoor", person.viaDoor)
@@ -90,14 +100,26 @@ class PassengerStore(context: Context) {
 
 object TtsSpeaker {
 
-    fun speak(context: Context, text: String, onFinished: () -> Unit) {
+    // 지금 읽고 있는 TTS. 취소 버튼이 읽던 말을 멈출 때 쓴다.
+    @Volatile
+    private var active: TextToSpeech? = null
+
+    fun stopCurrent() {
+        val tts = active ?: return
+        runCatching { tts.javaClass.getMethod("stop").invoke(tts) }
+            .onFailure { Log.w(TAG, "TTS stop 실패", it) }
+    }
+
+    fun speak(context: Context, text: String, onStarted: (() -> Unit)? = null, onFinished: () -> Unit) {
         val handler = Handler(Looper.getMainLooper())
         val tts = TextToSpeech(context.applicationContext, Mode.ON_DEVICE)
+        active = tts
         var finished = false
 
         fun finish() {
             if (finished) return
             finished = true
+            if (active === tts) active = null
             runCatching { tts.release() }
             onFinished()
         }
@@ -120,7 +142,10 @@ object TtsSpeaker {
         val eventProxy = addListener?.let { method ->
             newProxy(method.parameterTypes[0]) { name ->
                 Log.d(TAG, "TTS.$name")
-                if (name == "onDone" || name == "onStop" || name == "onError") handler.post { finish() }
+                when (name) {
+                    "onStart" -> handler.post { if (!finished) onStarted?.invoke() }
+                    "onDone", "onStop", "onError" -> handler.post { finish() }
+                }
             }
         }
         val initProxy = newProxy(initialize.parameterTypes[0]) { name ->

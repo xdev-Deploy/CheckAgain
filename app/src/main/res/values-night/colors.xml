@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="c_bg">#FF0B1220</color>
+    <color name="c_surface">#FF131C2E</color>
+    <color name="c_surface2">#FF1E2A42</color>
+    <color name="c_text">#FFE8EEF9</color>
+    <color name="c_title">#FFD3DBE8</color>
+    <color name="c_text2">#FF93A3BD</color>
+    <color name="c_line">#FF2A3856</color>
+    <color name="c_brand">#FF4C8DFF</color>
+    <color name="c_brand_soft">#FF1B2E52</color>
+    <color name="c_on_brand">#FF06142E</color>
+    <color name="c_badge">#FFFF6B6F</color>
+    <color name="c_ok">#FF3DD598</color>
+    <color name="c_warn">#FFFFB547</color>
+</resources>
