@@ -37,6 +37,8 @@ android {
 
     buildTypes {
         release {
+            // 제출용 APK를 바로 설치할 수 있도록 디버그 키로 서명한다. 스토어 배포용 키가 아니다.
+            signingConfig = signingConfigs.getByName("debug")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")

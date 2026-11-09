@@ -582,8 +582,7 @@ class MainActivity : Activity() {
         val on = LlmSettings.enabled(this)
         val usable = on && LlmSettings.available
         llmText.text = when {
-            !on -> "오프라인 모드"
-            !LlmSettings.available -> "온라인 키 없음"
+            !on || !LlmSettings.available -> "오프라인 모드"
             else -> "온라인 모드 켜짐"
         }
         llmDot.background = box(color(if (usable) R.color.c_ok else R.color.c_text2), dp(5))
